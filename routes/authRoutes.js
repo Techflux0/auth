@@ -3,9 +3,10 @@ const router = express.Router();
 const {
   register,
   login,
-  forgotPassword,
-  resetPassword,
-  getMe
+  getMe,
+  requestPasswordReset,
+  verifyResetOtp,
+  resetPassword
 } = require('../controllers/authController');
 const {
   verifyOTP,
@@ -22,7 +23,8 @@ router.get('/me', verifyToken, getMe);
 router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
 
-router.post('/forgot-password', forgotPassword);
-router.put('/reset-password/:token', resetPassword);
+router.post('/request-password-reset', requestPasswordReset);
+router.post('/verify-reset-otp', verifyResetOtp);
+router.post('/reset-password', resetPassword);
 
 module.exports = router;
