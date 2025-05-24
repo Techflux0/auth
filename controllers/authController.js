@@ -1,9 +1,10 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const validator = require('validator');
 // const { generateOTP } = require('../utils/generateOTP');
-const { sendEmail } = require('../utils/sendEmail');
+// const { sendEmail } = require('../utils/sendEmail');
 
 // Password strength validation
 const isStrongPassword = (password) => {
@@ -20,8 +21,49 @@ const isStrongPassword = (password) => {
          hasSpecialChars;
 };
 
+const verifyToken = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    console.error('Token verification error:', error);
+    res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
 const generateOTP = () => {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
+};
+
+const sendEmail = async (to, subject, text) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+
+    await transporter.sendMail({
+      from: `Trivia App <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      text
+    });
+
+    console.log('Email sent to', to);
+  } catch (error) {
+    console.error('Email send error:', error);
+    throw error;
+  }
 };
 
 
