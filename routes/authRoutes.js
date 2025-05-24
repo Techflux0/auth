@@ -4,7 +4,7 @@ const {
   register,
   login,
   getMe
-} = require('../controllers/authController');
+} = require('../controllers/AuthController');
 const {
   verifyOTP,
   resendOTP
