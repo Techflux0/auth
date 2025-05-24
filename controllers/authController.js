@@ -45,6 +45,10 @@ const generateOTP = () => {
 
 const sendEmail = async (to, subject, text) => {
   try {
+    if (!to || !validator.isEmail(to)) {
+      throw new Error('Invalid recipient email: ' + to);
+    }
+
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -53,17 +57,22 @@ const sendEmail = async (to, subject, text) => {
       }
     });
 
-    await transporter.sendMail({
-      from: `Trivia App <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      text
-    });
+    await transporter.verify();
 
+    const mailOptions = {
+      from: `Trivia App <${process.env.EMAIL_USER}>`,
+      to: to, 
+      subject: subject,
+      text: text,
+      html: `<p>${text.replace(/\n/g, '<br>')}</p>`
+    };
+
+    const info = await transporter.sendMail(mailOptions);
     console.log('Email sent to', to);
+    return info;
   } catch (error) {
     console.error('Email send error:', error);
-    throw error;
+    throw error; 
   }
 };
 
@@ -73,7 +82,6 @@ const register = async (req, res) => {
   try {
     const { username, email, password, confirmPassword } = req.body;
 
-    // Validation checks
     if (!username || !email || !password || !confirmPassword) {
       return res.status(400).json({ message: 'All fields are required' });
     }
@@ -88,7 +96,6 @@ const register = async (req, res) => {
       });
     }
 
-    // Check if user exists
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
       return res.status(400).json({ 
@@ -100,7 +107,6 @@ const register = async (req, res) => {
     // Create user
     const user = new User({ username, email, password });
 
-    // Generate OTP
     const otp = generateOTP();
     const otpExpiry = new Date();
     otpExpiry.setMinutes(otpExpiry.getMinutes() + 10); // 10 minutes expiry
@@ -218,44 +224,56 @@ const getMe = async (req, res) => {
   }
 };
 
-// Request Password Reset (Step 1)
 const requestPasswordReset = async (req, res) => {
   try {
     const { email } = req.body;
 
-    // 1. Check if user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Email not found' });
+    if (!email || !validator.isEmail(email)) {
+      return res.status(400).json({ message: 'Please provide a valid email' });
     }
 
-    // 2. Generate 6-digit OTP
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Email not found' 
+      });
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = Date.now() + 600000; // 10 minutes
 
-    // 3. Save OTP to user
     user.resetPasswordOtp = otp;
     user.resetPasswordExpire = otpExpiry;
     await user.save();
 
-    // 4. Send OTP email
-    const message = `Your password reset OTP is: ${otp}\nIt will expire in 10 minutes.`;
-    
-    await sendEmail({
-      to: user.email,
-      subject: 'Password Reset OTP',
-      text: message
-    });
+    await sendEmail(
+      user.email, 
+      'Password Reset OTP',
+      `Your password reset code is: ${otp}\nThis code expires in 10 minutes.`
+    );
 
     res.status(200).json({
       success: true,
       message: 'OTP sent to email',
-      email: user.email 
+      email: user.email
     });
 
   } catch (error) {
     console.error('Password reset error:', error);
-    res.status(500).json({ success: false, message: 'Error processing request' });
+    
+    // Specific error handling
+    if (error.message.includes('Invalid recipient')) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid email address' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      message: 'Error sending reset email' 
+    });
   }
 };
 
