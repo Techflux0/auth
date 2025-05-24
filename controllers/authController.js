@@ -228,52 +228,33 @@ const requestPasswordReset = async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (!email || !validator.isEmail(email)) {
-      return res.status(400).json({ message: 'Please provide a valid email' });
-    }
-
+    // 1. Find user
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Email not found' 
-      });
+      return res.status(404).json({ message: 'Email not found' });
     }
 
+    // 2. Generate and save OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 600000; // 10 minutes
-
     user.resetPasswordOtp = otp;
-    user.resetPasswordExpire = otpExpiry;
+    user.resetPasswordExpire = Date.now() + 600000; // 10 minutes
     await user.save();
 
+    // 3. Log the stored values for debugging
+    console.log(`Stored OTP: ${otp} for email: ${email}`);
+    console.log(`Expires at: ${new Date(user.resetPasswordExpire)}`);
+
+    // 4. Send email
     await sendEmail(
-      user.email, 
+      user.email,
       'Password Reset OTP',
-      `Your password reset code is: ${otp}\nThis code expires in 10 minutes.`
+      `Your OTP is: ${otp} (expires in 10 minutes)`
     );
 
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent to email',
-      email: user.email
-    });
-
+    res.status(200).json({ message: 'OTP sent' });
   } catch (error) {
-    console.error('Password reset error:', error);
-    
-    // Specific error handling
-    if (error.message.includes('Invalid recipient')) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Invalid email address' 
-      });
-    }
-    
-    res.status(500).json({ 
-      success: false,
-      message: 'Error sending reset email' 
-    });
+    console.error('Reset request error:', error);
+    res.status(500).json({ message: 'Error processing request' });
   }
 };
 
@@ -287,57 +268,54 @@ const verifyResetOtp = async (req, res) => {
       resetPasswordExpire: { $gt: Date.now() }
     });
 
+  
     if (!user) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid or expired OTP' 
-      });
+      const expiredUser = await User.findOne({ email });
+      console.log('Database OTP:', expiredUser?.resetPasswordOtp);
+      console.log('Current time:', new Date());
+      console.log('Expiry time:', expiredUser?.resetPasswordExpire 
+        ? new Date(expiredUser.resetPasswordExpire) 
+        : 'Not set');
+    }
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
     const tempToken = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '10m' } 
+      { id: user._id }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '10m' }
     );
 
-    res.status(200).json({
-      success: true,
+    res.status(200).json({ 
       message: 'OTP verified',
       tempToken 
     });
-
   } catch (error) {
     console.error('OTP verification error:', error);
-    res.status(500).json({ success: false, message: 'Error verifying OTP' });
+    res.status(500).json({ message: 'Error verifying OTP' });
   }
 };
 
+
+
 const resetPassword = async (req, res) => {
   try {
-    const { tempToken, newPassword, confirmPassword } = req.body;
+    const { tempToken, newPassword } = req.body;
 
     const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({ message: 'Passwords do not match' });
-    }
-    const user = await User.findById(decoded.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
 
+    const user = await User.findById(decoded.id);
     user.password = newPassword;
     user.resetPasswordOtp = undefined;
     user.resetPasswordExpire = undefined;
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Password updated successfully'
-    });
-
+    res.status(200).json({ message: 'Password updated' });
   } catch (error) {
-    console.error('Password reset error:', error);
-    res.status(500).json({ message: 'Error resetting password' });
+    console.error('Reset error:', error);
+    res.status(400).json({ message: 'Invalid or expired token' });
   }
 };
 
