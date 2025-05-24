@@ -20,4 +20,9 @@ router.get('/me', verifyToken, getMe);
 router.post('/verify-otp', verifyOTP);
 router.post('/resend-otp', resendOTP);
 
+router.post('/forgot-password', forgotPassword);
+router.put('/reset-password/:token', resetPassword);
+
 module.exports = router;
+
+

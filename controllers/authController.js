@@ -217,8 +217,134 @@ const getMe = async (req, res) => {
   }
 };
 
+// Forgot password
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // 1) Check if user exists
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Email not found' });
+    }
+
+    // 2) Generate reset token (6-digit code)
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    const resetTokenExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    // 3) Save hashed token to database
+    user.resetPasswordToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+    user.resetPasswordExpire = resetTokenExpires;
+    await user.save();
+
+    // 4) Send email with reset token
+    const resetUrl = `${req.protocol}://${req.get('host')}/api/auth/reset-password/${resetToken}`;
+    const message = `
+      <h2>Password Reset Request</h2>
+      <p>Your password reset code is: <strong>${resetToken}</strong></p>
+      <p>This code will expire in 10 minutes.</p>
+      <p>If you didn't request this, please ignore this email.</p>
+    `;
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Your Password Reset Code (Valid for 10 mins)',
+      html: message
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Reset code sent to email',
+      email: user.email // Return email for client-side verification
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+    res.status(500).json({ success: false, message: 'Error sending reset email' });
+  }
+};
+
+/**
+ * @desc    Reset password
+ * @route   PUT /api/auth/reset-password/:token
+ * @access  Public
+ */
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+
+    // 1) Validate passwords match
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    // 2) Validate password strength
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ 
+        message: 'Password must be at least 8 characters with uppercase, lowercase, number, and special character'
+      });
+    }
+
+    // 3) Get user based on token
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Token is invalid or has expired' });
+    }
+
+    // 4) Update password and clear reset token
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    // 5) Send confirmation email
+    await sendEmail({
+      to: user.email,
+      subject: 'Password Changed Successfully',
+      text: 'Your password has been successfully updated.'
+    });
+
+    // 6) Create new JWT token
+    const newToken = jwt.sign(
+      { id: user._id, username: user.username, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    res.status(200).json({
+      success: true,
+      token: newToken,
+      message: 'Password updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Error resetting password' });
+  }
+};
+
+
 module.exports = {
   register,
   login,
-  getMe
+  getMe,
+  verifyToken,
+  forgotPassword,
+  resetPassword
 };
