@@ -1,10 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const {
-  register,
-  login,
-  getMe
-} = require('../controllers/AuthController');
+const { register, login, getMe } = require('../controllers/authController');
 const {
   verifyOTP,
   resendOTP
