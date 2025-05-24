@@ -2,7 +2,7 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const validator = require('validator');
-const { generateOTP } = require('../utils/generateOTP');
+// const { generateOTP } = require('../utils/generateOTP');
 const { sendEmail } = require('../utils/sendEmail');
 
 // Password strength validation
