@@ -319,7 +319,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
-
+//Make sure to export appro sucker
 module.exports = {
   register,
   login,
